@@ -1,0 +1,200 @@
+-- This file has been generated from package.yaml by hpack version 0.20.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 657feb2646c198aa011800e3d6829225180c76ec28d0f3e84112033d514c64ca
+
+name:           discord-vc-notification
+version:        0.1.0.0
+description:    Please see the README on Github at <https://github.com/fumieval/discord-vc-notification#readme>
+homepage:       https://github.com/fumieval/discord-vc-notification#readme
+bug-reports:    https://github.com/fumieval/discord-vc-notification/issues
+author:         Fumiaki Kinoshita
+maintainer:     fumiexcel@gmail.com
+copyright:      Copyright (c) 2017 Fumiaki Kinoshita
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+
+extra-source-files:
+    ChangeLog.md
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/fumieval/discord-vc-notification
+
+executable discord-vc-notification
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Paths_discord_vc_notification
+  default-language: Haskell2010
+
+executable dvn-connect
+  main-is: dvn-connect.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Main
+      Paths_discord_vc_notification
+  default-language: Haskell2010
+
+executable dvn-heartbeat
+  main-is: dvn-heartbeat.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Main
+      Paths_discord_vc_notification
+  default-language: Haskell2010
+
+executable dvn-identify
+  main-is: dvn-identify.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Main
+      Paths_discord_vc_notification
+  default-language: Haskell2010
+
+executable dvn-post
+  main-is: dvn-post.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Main
+      Paths_discord_vc_notification
+  default-language: Haskell2010
+
+executable dvn-update
+  main-is: dvn-update.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Main
+      Paths_discord_vc_notification
+  default-language: Haskell2010
+
+executable dvn-watchlist
+  main-is: dvn-watchlist.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , rio
+    , text
+    , time
+    , transformers
+    , unliftio
+    , unordered-containers
+    , websockets
+    , wuss
+  other-modules:
+      Main
+      Paths_discord_vc_notification
+  default-language: Haskell2010

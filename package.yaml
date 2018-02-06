@@ -1,0 +1,66 @@
+name:                discord-vc-notification
+version:             0.1.0.0
+github:              "fumieval/discord-vc-notification"
+license:             BSD3
+author:              "Fumiaki Kinoshita"
+maintainer:          "fumiexcel@gmail.com"
+copyright:           "Copyright (c) 2017 Fumiaki Kinoshita"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Data
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on Github at <https://github.com/fumieval/discord-vc-notification#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- aeson
+- bytestring
+- http-client
+- http-client-tls
+- http-types
+- text
+- time
+- transformers
+- unordered-containers
+- websockets
+- wuss
+- rio
+- unliftio
+executables:
+  discord-vc-notification:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded -Wall
+  dvn-connect:
+    main:                dvn-connect.hs
+    source-dirs:         app
+    ghc-options: -threaded -Wall
+  dvn-heartbeat:
+    main:                dvn-heartbeat.hs
+    source-dirs:         app
+    ghc-options: -threaded -Wall
+  dvn-identify:
+    main:                dvn-identify.hs
+    source-dirs:         app
+    ghc-options: -threaded -Wall
+  dvn-watchlist:
+    main:                dvn-watchlist.hs
+    source-dirs:         app
+    ghc-options: -threaded -Wall
+  dvn-update:
+    main:                dvn-update.hs
+    source-dirs:         app
+    ghc-options: -threaded -Wall
+  dvn-post:
+    main:                dvn-post.hs
+    source-dirs:         app
+    ghc-options: -threaded -Wall
