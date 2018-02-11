@@ -199,7 +199,7 @@ start = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
     hcManager <- HC.newManager tlsManagerSettings
     memberState <- newIORef HM.empty
     watchMap <- newIORef HM.empty
-    logOpts <- mkLogOptions stderr True
+    logOpts <- mkLogOptions stderr False
     withStickyLogger logOpts $ \logFunc -> forever $ do
       bs <- WS.receiveData wsConn
       obj <- case decode bs of
