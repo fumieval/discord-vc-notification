@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 657feb2646c198aa011800e3d6829225180c76ec28d0f3e84112033d514c64ca
+-- hash: 9edb8e4f93b2c8ee1254bd1a31b4bc910c8cd0f2b70737b436bbebd603564409
 
 name:           discord-vc-notification
 version:        0.1.0.0
@@ -40,7 +40,6 @@ executable discord-vc-notification
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets
@@ -64,7 +63,6 @@ executable dvn-connect
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets
@@ -89,7 +87,6 @@ executable dvn-heartbeat
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets
@@ -114,7 +111,6 @@ executable dvn-identify
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets
@@ -139,7 +135,6 @@ executable dvn-post
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets
@@ -164,7 +159,6 @@ executable dvn-update
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets
@@ -189,7 +183,6 @@ executable dvn-watchlist
     , rio
     , text
     , time
-    , transformers
     , unliftio
     , unordered-containers
     , websockets

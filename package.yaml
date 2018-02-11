@@ -28,7 +28,6 @@ dependencies:
 - http-types
 - text
 - time
-- transformers
 - unordered-containers
 - websockets
 - wuss
