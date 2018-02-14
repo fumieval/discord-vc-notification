@@ -192,15 +192,14 @@ discordApi m ps obj = ask >>= \Env{..} -> do
     Nothing -> fail $ "Malformed response: " ++ show (HC.responseBody resp)
     Just a -> return a
 
-start :: IO ()
-start = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
+start :: LogFunc -> IO ()
+start logFunc = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
   $ \wsConn -> do
     botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
     memberState <- newIORef HM.empty
     watchMap <- newIORef HM.empty
-    logOpts <- mkLogOptions stderr False
-    withStickyLogger logOpts $ \logFunc -> forever $ do
+    forever $ do
       bs <- WS.receiveData wsConn
       obj <- case decode bs of
         Nothing -> fail "Malformed request"
@@ -211,7 +210,8 @@ start = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
 
 main :: IO ()
 main = forever $ do
-  start `catch` \case
-    WS.CloseRequest 1001 _ -> return ()
-    e -> throwIO e
+  logOpts <- mkLogOptions stderr False
+  withStickyLogger logOpts $ \logFunc ->
+    start logFunc `catch` \e -> runRIO logFunc
+      $ logError $ displayShow (e :: SomeException)
   threadDelay $ 10 * 1000000
