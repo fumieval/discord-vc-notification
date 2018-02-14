@@ -158,8 +158,7 @@ identify = do
 ignoreEvent :: MessageHandler
 ignoreEvent obj = Alt $ do
   (_ :: Value) <- opcode obj 0
-  t <- obj .: "t"
-  return $ logInfo $ "Ignoring " <> display (t :: Text)
+  return $ pure ()
 
 combined :: MessageHandler
 combined = mconcat
