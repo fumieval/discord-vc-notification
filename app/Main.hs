@@ -46,19 +46,26 @@ watchList obj = do
     vcid <- T.splitOn " " vcids
     guard $ not $ T.null vcid
     return (vcid, tcid)
+  <|> pure []
 
 guildCreate :: MessageHandler
 guildCreate obj = Alt $ do
   dat <- event obj "GUILD_CREATE"
-  chs <- dat .: "channels"
-  wm <- HM.fromList . concat <$> traverse watchList (chs :: [Object])
-  return $ ask >>= \env -> writeIORef (watchMap env) wm
+  gid <- dat .: "id"
+  return $ do
+    chs <- discordApi "GET" ["guilds", gid, "channels"] Nothing
+    let wm = either (const HM.empty) id $ parseEither (const $ HM.fromList . concat <$> traverse watchList (chs :: [Object])) ()
+    logInfo $ displayShow wm
+    ask >>= \env -> writeIORef (watchMap env) wm
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
   dat <- event obj "CHANNEL_UPDATE"
   wm <- HM.fromList <$> watchList dat
-  return $ ask >>= \env -> modifyIORef (watchMap env) (`HM.union` wm)
+
+  return $ do
+    logInfo $ displayShow wm
+    ask >>= \env -> modifyIORef (watchMap env) (`HM.union` wm)
 
 postJoined :: Text -- user id
   -> Text -- voice channel id
@@ -75,7 +82,7 @@ postJoined uid vc tc = do
       , "icon_url" .= T.intercalate "/"
         ["https://cdn.discordapp.com", "avatars", uid, avatar <> ".png?size=256"]
       ]
-  void $ discordApi "POST" ["channels", tc, "messages"]
+  (_ :: Value) <- discordApi "POST" ["channels", tc, "messages"]
     $ Just $ object
       [ "content" .= T.empty
       , "embed" .= object
@@ -84,6 +91,7 @@ postJoined uid vc tc = do
         , "author" .= author
         ]
       ]
+  return ()
 
 voiceChannelJoin :: MessageHandler
 voiceChannelJoin obj = Alt $ do
@@ -173,7 +181,7 @@ combined = mconcat
 send :: Value -> RIO Env ()
 send v = ask >>= \Env{..} -> liftIO $ WS.sendTextData wsConn $ encode v
 
-discordApi :: Method -> [Text] -> Maybe Value -> RIO Env Object
+discordApi :: FromJSON a => Method -> [Text] -> Maybe Value -> RIO Env a
 discordApi m ps obj = ask >>= \Env{..} -> do
   initialRequest <- liftIO $ HC.parseRequest "https://discordapp.com/"
   resp <- liftIO $ HC.httpLbs initialRequest
@@ -209,7 +217,7 @@ start logFunc = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json
 
 main :: IO ()
 main = forever $ do
-  logOpts <- mkLogOptions stderr False
+  logOpts <- mkLogOptions stderr True
   withStickyLogger logOpts $ \logFunc ->
     start logFunc `catch` \e -> runRIO logFunc
       $ logError $ displayShow (e :: SomeException)
