@@ -216,9 +216,10 @@ start logFunc = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json
         Error _ -> logWarn $ "Unhandled: " <> displayShow bs
 
 main :: IO ()
-main = forever $ do
+main = flip fix 1000000 $ \self del -> do
   logOpts <- mkLogOptions stderr True
   withStickyLogger logOpts $ \logFunc ->
     start logFunc `catch` \e -> runRIO logFunc
       $ logError $ displayShow (e :: SomeException)
-  threadDelay $ 10 * 1000000
+  threadDelay del
+  self $ del * 2
