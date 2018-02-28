@@ -29,7 +29,8 @@ data Env = Env
   { hcManager :: HC.Manager
   , wsConn :: WS.Connection
   , botToken :: Text
-  , watchMap :: IORef (HM.HashMap VoiceChannelId TextChannelId)
+  , voiceChannelNames :: IORef (HM.HashMap VoiceChannelId (GuildId, Text))
+  , watchMap :: IORef (HM.HashMap (GuildId, Text) TextChannelId)
   , memberState :: IORef (HM.HashMap UserId VoiceChannelId)
   , logFunc :: LogFunc
   }
@@ -40,17 +41,29 @@ instance HasLogFunc Env where
 newtype VoiceChannelId = VoiceChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 newtype TextChannelId = TextChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 newtype UserId = UserId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
+newtype GuildId = GuildId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 
-watchList :: Object -> Parser [(VoiceChannelId, TextChannelId)]
+voiceChannelInfo :: Object -> Parser [(VoiceChannelId, (GuildId, Text))]
+voiceChannelInfo obj = do
+  ty <- obj .: "type"
+  guard $ ty == (2 :: Int) -- Voice channel
+  vcid <- obj .: "id"
+  gid <- obj .: "guild_id"
+  name <- obj .: "name"
+  return [(vcid, (gid, name))]
+  <|> pure []
+
+watchList :: Object -> Parser [((GuildId, Text), TextChannelId)]
 watchList obj = do
   topic <- obj .: "topic"
   tcid <- obj .: "id"
+  gid <- obj .: "guild_id"
   return $ do
     str <- T.lines topic
-    vcids <- maybeToList $ T.stripPrefix "discord-vc-notification:" str
-    vcid <- T.splitOn " " vcids
-    guard $ not $ T.null vcid
-    return (VoiceChannelId vcid, tcid)
+    vcnames <- maybeToList $ T.stripPrefix "discord-vc-notification:" str
+    vcname <- T.splitOn " " vcnames
+    guard $ not $ T.null vcname
+    return ((gid, vcname), tcid)
   <|> pure []
 
 guildCreate :: MessageHandler
@@ -58,26 +71,36 @@ guildCreate obj = Alt $ do
   dat <- event obj "GUILD_CREATE"
   gid <- dat .: "id"
   return $ do
-    chs <- discordApi "GET" ["guilds", gid, "channels"] Nothing
-    let wm = either (const HM.empty) id $ flip parseEither () $ const
-          $ HM.fromList . concat <$> traverse watchList (chs :: [Object])
+    chs :: [Object] <- discordApi "GET" ["guilds", gid, "channels"] Nothing
+    let parseOr e = either (const e) id . flip parseEither () . const
+    let collect f = parseOr mempty $ HM.fromList . concat <$> traverse f chs
+    let wm = collect watchList
+    let vcnames = collect voiceChannelInfo
+    Env{..} <- ask
+    modifyIORef watchMap (`HM.union`wm)
+    modifyIORef voiceChannelNames (`HM.union`vcnames)
     logInfo $ displayShow wm
-    ask >>= \env -> writeIORef (watchMap env) wm
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
   dat <- event obj "CHANNEL_UPDATE"
   wm <- HM.fromList <$> watchList dat
+  vcnames <- HM.fromList <$> voiceChannelInfo dat
 
   return $ do
+    Env{..} <- ask
+    modifyIORef watchMap (`HM.union` wm)
+    modifyIORef voiceChannelNames (`HM.union` vcnames)
     logInfo $ displayShow wm
-    ask >>= \env -> modifyIORef (watchMap env) (`HM.union` wm)
 
 postJoined :: UserId -> VoiceChannelId -> TextChannelId -> RIO Env ()
 postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
   now <- liftIO getCurrentTime
   uInfo <- discordApi "GET" ["users", uid] Nothing
-  author <- either fail pure $ flip parseEither uInfo $ const $ do
+  let printError e = do
+        logError $ fromString e
+        return Null
+  author <- either printError pure $ flip parseEither uInfo $ const $ do
     name <- uInfo .: "username"
     avatar <- uInfo .: "avatar"
     return $ object
@@ -85,6 +108,7 @@ postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
       , "icon_url" .= T.intercalate "/"
         ["https://cdn.discordapp.com", "avatars", uid, avatar <> ".png?size=256"]
       ]
+
   (_ :: Value) <- discordApi "POST" ["channels", tc, "messages"]
     $ Just $ object
       [ "content" .= T.empty
@@ -104,10 +128,12 @@ voiceChannelJoin obj = Alt $ do
   return $ do
     Env{..} <- ask
     wm <- readIORef watchMap
+    names <- readIORef voiceChannelNames
     joined <- atomicModifyIORef memberState
       $ \ms -> (HM.alter (const cid) uid ms, do
         vc <- cid
-        postJoined uid vc <$> HM.lookup vc wm)
+        name <- HM.lookup vc names
+        postJoined uid vc <$> HM.lookup name wm)
     sequence_ joined
 
 opcode :: FromJSON a => Object -> Int -> Parser a
@@ -208,6 +234,7 @@ start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&enc
     botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
     memberState <- newIORef HM.empty
+    voiceChannelNames <- newIORef HM.empty
     watchMap <- newIORef HM.empty
     forever $ do
       bs <- WS.receiveData wsConn
