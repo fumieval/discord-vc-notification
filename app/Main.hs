@@ -1,4 +1,5 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -28,15 +29,19 @@ data Env = Env
   { hcManager :: HC.Manager
   , wsConn :: WS.Connection
   , botToken :: Text
-  , watchMap :: IORef (HM.HashMap Text Text)
-  , memberState :: IORef (HM.HashMap Text Text)
+  , watchMap :: IORef (HM.HashMap VoiceChannelId TextChannelId)
+  , memberState :: IORef (HM.HashMap UserId VoiceChannelId)
   , logFunc :: LogFunc
   }
 
 instance HasLogFunc Env where
   logFuncL = to logFunc
 
-watchList :: Object -> Parser [(Text, Text)]
+newtype VoiceChannelId = VoiceChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
+newtype TextChannelId = TextChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
+newtype UserId = UserId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
+
+watchList :: Object -> Parser [(VoiceChannelId, TextChannelId)]
 watchList obj = do
   topic <- obj .: "topic"
   tcid <- obj .: "id"
@@ -45,7 +50,7 @@ watchList obj = do
     vcids <- maybeToList $ T.stripPrefix "discord-vc-notification:" str
     vcid <- T.splitOn " " vcids
     guard $ not $ T.null vcid
-    return (vcid, tcid)
+    return (VoiceChannelId vcid, tcid)
   <|> pure []
 
 guildCreate :: MessageHandler
@@ -54,7 +59,8 @@ guildCreate obj = Alt $ do
   gid <- dat .: "id"
   return $ do
     chs <- discordApi "GET" ["guilds", gid, "channels"] Nothing
-    let wm = either (const HM.empty) id $ parseEither (const $ HM.fromList . concat <$> traverse watchList (chs :: [Object])) ()
+    let wm = either (const HM.empty) id $ flip parseEither () $ const
+          $ HM.fromList . concat <$> traverse watchList (chs :: [Object])
     logInfo $ displayShow wm
     ask >>= \env -> writeIORef (watchMap env) wm
 
@@ -67,11 +73,8 @@ channelUpdate obj = Alt $ do
     logInfo $ displayShow wm
     ask >>= \env -> modifyIORef (watchMap env) (`HM.union` wm)
 
-postJoined :: Text -- user id
-  -> Text -- voice channel id
-  -> Text -- text channel id
-  -> RIO Env ()
-postJoined uid vc tc = do
+postJoined :: UserId -> VoiceChannelId -> TextChannelId -> RIO Env ()
+postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
   now <- liftIO getCurrentTime
   uInfo <- discordApi "GET" ["users", uid] Nothing
   author <- either fail pure $ flip parseEither uInfo $ const $ do
@@ -212,7 +215,7 @@ start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&enc
         Nothing -> fail "Malformed request"
         Just a -> pure a
       runRIO Env{..} $ case parse (getAlt . combined) obj of
-        Success m -> onSuccess >> m
+        Success m -> liftIO onSuccess >> m
         Error _ -> logWarn $ "Unhandled: " <> displayShow bs
 
 main :: IO ()
