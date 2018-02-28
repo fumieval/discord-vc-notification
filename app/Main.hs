@@ -199,8 +199,8 @@ discordApi m ps obj = ask >>= \Env{..} -> do
     Nothing -> fail $ "Malformed response: " ++ show (HC.responseBody resp)
     Just a -> return a
 
-start :: LogFunc -> IO ()
-start logFunc = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
+start :: LogFunc -> IO () -> IO ()
+start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
   $ \wsConn -> do
     botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
@@ -212,14 +212,18 @@ start logFunc = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json
         Nothing -> fail "Malformed request"
         Just a -> pure a
       runRIO Env{..} $ case parse (getAlt . combined) obj of
-        Success m -> m
+        Success m -> onSuccess >> m
         Error _ -> logWarn $ "Unhandled: " <> displayShow bs
 
 main :: IO ()
-main = flip fix 1000000 $ \self del -> do
+main = do
+  retryInterval <- newIORef minInterval
   logOpts <- mkLogOptions stderr True
   withStickyLogger logOpts $ \logFunc ->
-    start logFunc `catch` \e -> runRIO logFunc
-      $ logError $ displayShow (e :: SomeException)
-  threadDelay del
-  self $ del * 2
+    start logFunc (writeIORef retryInterval minInterval)
+      `catch` \e -> do
+        runRIO logFunc $ logError $ displayShow (e :: SomeException)
+  readIORef retryInterval >>= threadDelay
+  modifyIORef retryInterval (*2)
+  where
+    minInterval = 1000000
