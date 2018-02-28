@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9edb8e4f93b2c8ee1254bd1a31b4bc910c8cd0f2b70737b436bbebd603564409
+-- hash: 6569b576b4da56f92c2500497abcfa17bd567211b5a93b6af9002f73b2f4f136
 
 name:           discord-vc-notification
 version:        0.1.0.0
@@ -29,7 +29,7 @@ executable discord-vc-notification
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -threaded -Wall
+  ghc-options: -threaded -Wall -O2
   build-depends:
       aeson
     , base >=4.7 && <5
@@ -51,7 +51,7 @@ executable discord-vc-notification
 executable dvn-connect
   main-is: dvn-connect.hs
   hs-source-dirs:
-      app
+      tutorial
   ghc-options: -threaded -Wall
   build-depends:
       aeson
@@ -68,14 +68,13 @@ executable dvn-connect
     , websockets
     , wuss
   other-modules:
-      Main
       Paths_discord_vc_notification
   default-language: Haskell2010
 
 executable dvn-heartbeat
   main-is: dvn-heartbeat.hs
   hs-source-dirs:
-      app
+      tutorial
   ghc-options: -threaded -Wall
   build-depends:
       aeson
@@ -92,14 +91,13 @@ executable dvn-heartbeat
     , websockets
     , wuss
   other-modules:
-      Main
       Paths_discord_vc_notification
   default-language: Haskell2010
 
 executable dvn-identify
   main-is: dvn-identify.hs
   hs-source-dirs:
-      app
+      tutorial
   ghc-options: -threaded -Wall
   build-depends:
       aeson
@@ -116,14 +114,13 @@ executable dvn-identify
     , websockets
     , wuss
   other-modules:
-      Main
       Paths_discord_vc_notification
   default-language: Haskell2010
 
 executable dvn-post
   main-is: dvn-post.hs
   hs-source-dirs:
-      app
+      tutorial
   ghc-options: -threaded -Wall
   build-depends:
       aeson
@@ -140,14 +137,13 @@ executable dvn-post
     , websockets
     , wuss
   other-modules:
-      Main
       Paths_discord_vc_notification
   default-language: Haskell2010
 
 executable dvn-update
   main-is: dvn-update.hs
   hs-source-dirs:
-      app
+      tutorial
   ghc-options: -threaded -Wall
   build-depends:
       aeson
@@ -164,14 +160,13 @@ executable dvn-update
     , websockets
     , wuss
   other-modules:
-      Main
       Paths_discord_vc_notification
   default-language: Haskell2010
 
 executable dvn-watchlist
   main-is: dvn-watchlist.hs
   hs-source-dirs:
-      app
+      tutorial
   ghc-options: -threaded -Wall
   build-depends:
       aeson
@@ -188,6 +183,5 @@ executable dvn-watchlist
     , websockets
     , wuss
   other-modules:
-      Main
       Paths_discord_vc_notification
   default-language: Haskell2010

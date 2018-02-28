@@ -38,28 +38,28 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
-    - -threaded -Wall
+    - -threaded -Wall -O2
   dvn-connect:
     main:                dvn-connect.hs
-    source-dirs:         app
+    source-dirs:         tutorial
     ghc-options: -threaded -Wall
   dvn-heartbeat:
     main:                dvn-heartbeat.hs
-    source-dirs:         app
+    source-dirs:         tutorial
     ghc-options: -threaded -Wall
   dvn-identify:
     main:                dvn-identify.hs
-    source-dirs:         app
+    source-dirs:         tutorial
     ghc-options: -threaded -Wall
   dvn-watchlist:
     main:                dvn-watchlist.hs
-    source-dirs:         app
+    source-dirs:         tutorial
     ghc-options: -threaded -Wall
   dvn-update:
     main:                dvn-update.hs
-    source-dirs:         app
+    source-dirs:         tutorial
     ghc-options: -threaded -Wall
   dvn-post:
     main:                dvn-post.hs
-    source-dirs:         app
+    source-dirs:         tutorial
     ghc-options: -threaded -Wall
