@@ -249,11 +249,12 @@ main :: IO ()
 main = do
   retryInterval <- newIORef minInterval
   logOpts <- mkLogOptions stderr True
-  withStickyLogger logOpts $ \logFunc ->
-    start logFunc (writeIORef retryInterval minInterval)
-      `catch` \e -> do
-        runRIO logFunc $ logError $ displayShow (e :: SomeException)
-  readIORef retryInterval >>= threadDelay
-  modifyIORef retryInterval (*2)
+  forever $ do
+    withStickyLogger logOpts $ \logFunc ->
+      start logFunc (writeIORef retryInterval minInterval)
+        `catch` \e -> do
+          runRIO logFunc $ logError $ displayShow (e :: SomeException)
+    readIORef retryInterval >>= threadDelay
+    modifyIORef retryInterval (*2)
   where
     minInterval = 1000000
