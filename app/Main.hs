@@ -11,7 +11,7 @@ import UnliftIO.Concurrent
 import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.HashMap.Strict as HM
-import Data.Monoid
+import Data.Monoid (Alt(..))
 import Data.Time.Clock
 import Data.Time.Format
 import qualified Network.HTTP.Client as HC
@@ -36,7 +36,7 @@ data Env = Env
   }
 
 instance HasLogFunc Env where
-  logFuncL = to logFunc
+  logFuncL = lens logFunc (\s f -> s { logFunc = f })
 
 newtype VoiceChannelId = VoiceChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 newtype TextChannelId = TextChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
@@ -249,9 +249,9 @@ start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&enc
 main :: IO ()
 main = do
   retryInterval <- newIORef minInterval
-  logOpts <- mkLogOptions stderr True
+  logOpts <- logOptionsHandle stderr True
   forever $ do
-    withStickyLogger logOpts $ \logFunc ->
+    withLogFunc logOpts $ \logFunc ->
       start logFunc (writeIORef retryInterval minInterval)
         `catch` \e -> do
           runRIO logFunc $ logError $ displayShow (e :: SomeException)

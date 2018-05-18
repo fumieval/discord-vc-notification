@@ -15,7 +15,7 @@ data Env = Env
   }
 
 instance HasLogFunc Env where
-  logFuncL = to logFunc
+  logFuncL = lens logFunc (\s f -> s { logFunc = f })
 
 send :: Value -> RIO Env ()
 send v = ask >>= \Env{..} -> liftIO $ WS.sendTextData wsConn $ encode v
@@ -36,8 +36,8 @@ hello obj = do
 main :: IO ()
 main = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
   $ \wsConn -> do
-    logOpts <- mkLogOptions stderr True
-    withStickyLogger logOpts $ \logFunc -> forever $ do
+    logOpts <- logOptionsHandle stderr True
+    withLogFunc logOpts $ \logFunc -> forever $ do
       bs <- WS.receiveData wsConn
       obj <- case decode bs of
         Nothing -> fail "Failed to parse a JSON object"

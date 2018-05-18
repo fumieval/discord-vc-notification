@@ -1,8 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+-- This file has been generated from package.yaml by hpack version 0.28.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6569b576b4da56f92c2500497abcfa17bd567211b5a93b6af9002f73b2f4f136
+-- hash: c55bc379af960034433191ec91586c38853fe14fc65d01014a523d2673ed09f5
 
 name:           discord-vc-notification
 version:        0.1.0.0
@@ -16,7 +16,6 @@ license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
-
 extra-source-files:
     ChangeLog.md
     README.md

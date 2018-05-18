@@ -6,7 +6,7 @@ import UnliftIO.Concurrent
 import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.HashMap.Strict as HM
-import Data.Monoid
+import Data.Monoid (Alt(..))
 import qualified Data.Text as T
 import qualified Network.WebSockets as WS
 import qualified Wuss as WS
@@ -21,7 +21,7 @@ data Env = Env
   }
 
 instance HasLogFunc Env where
-  logFuncL = to logFunc
+  logFuncL = lens logFunc (\s f -> s { logFunc = f })
 
 send :: Value -> RIO Env ()
 send v = ask >>= \Env{..} -> liftIO $ WS.sendTextData wsConn $ encode v
@@ -124,10 +124,10 @@ main :: IO ()
 main = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
   $ \wsConn -> do
     botToken <- fromString <$> getEnv "DISCORD_BOT_TOKEN"
-    logOpts <- mkLogOptions stderr True
+    logOpts <- logOptionsHandle stderr True
     watchMap <- newIORef HM.empty
     memberState <- newIORef HM.empty
-    withStickyLogger logOpts $ \logFunc -> forever $ do
+    withLogFunc logOpts $ \logFunc -> forever $ do
       bs <- WS.receiveData wsConn
       obj <- case decode bs of
         Nothing -> fail "Failed to parse a JSON object"
