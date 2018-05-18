@@ -60,7 +60,9 @@ watchList obj = do
   gid <- obj .: "guild_id"
   return $ do
     str <- T.lines topic
-    vcnames <- maybeToList $ T.stripPrefix "discord-vc-notification:" str
+    vcnames <- maybeToList
+      $ T.stripPrefix "discord-vc-notification:" str
+      <|> T.stripPrefix "vc-notification:" str
     vcname <- T.splitOn " " vcnames
     guard $ not $ T.null vcname
     return ((gid, vcname), tcid)
