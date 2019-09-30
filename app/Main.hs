@@ -68,8 +68,8 @@ watchList obj = do
     return ((gid, vcname), tcid)
   <|> pure []
 
-guildCreate :: MessageHandler
-guildCreate obj = Alt $ do
+guildCreate :: IO () -> MessageHandler
+guildCreate onSuccess obj = Alt $ do
   dat <- event obj "GUILD_CREATE"
   gid <- dat .: "id"
   return $ do
@@ -82,6 +82,7 @@ guildCreate obj = Alt $ do
     modifyIORef watchMap (`HM.union`wm)
     modifyIORef voiceChannelNames (`HM.union`vcnames)
     logInfo $ displayShow wm
+    liftIO onSuccess
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
@@ -200,11 +201,11 @@ ignoreEvent obj = Alt $ do
   (_ :: Value) <- opcode obj 0
   return $ pure ()
 
-combined :: MessageHandler
-combined = mconcat
+combined :: IO () -> MessageHandler
+combined onSuccess = mconcat
   [ ackHeartbeat
   , hello
-  , guildCreate
+  , guildCreate onSuccess
   , channelUpdate
   , voiceChannelJoin
   , ignoreEvent
@@ -244,8 +245,8 @@ start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&enc
       obj <- case decode bs of
         Nothing -> fail "Malformed request"
         Just a -> pure a
-      runRIO Env{..} $ case parse (getAlt . combined) obj of
-        Success m -> liftIO onSuccess >> m
+      runRIO Env{..} $ case parse (getAlt . combined onSuccess) obj of
+        Success m -> m
         Error _ -> logWarn $ "Unhandled: " <> displayShow bs
 
 main :: IO ()
@@ -253,11 +254,14 @@ main = do
   retryInterval <- newIORef minInterval
   logOpts <- logOptionsHandle stderr True
   forever $ do
-    withLogFunc logOpts $ \logFunc ->
+    withLogFunc logOpts $ \logFunc -> do
       start logFunc (writeIORef retryInterval minInterval)
         `catch` \e -> do
           runRIO logFunc $ logError $ displayShow (e :: SomeException)
-    readIORef retryInterval >>= threadDelay
-    modifyIORef retryInterval (*2)
+      t <- readIORef retryInterval
+      runRIO logFunc $ logWarn $ "Restarting in " <> displayShow t
+      threadDelay $ floor $ t * 1000000
+      modifyIORef retryInterval (*1.5)
   where
-    minInterval = 1000000
+    minInterval :: Double
+    minInterval = 30
