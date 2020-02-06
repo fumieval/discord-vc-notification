@@ -14,6 +14,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.Monoid (Alt(..))
 import Data.Time.Clock
 import Data.Time.Format
+import qualified RIO.ByteString.Lazy as BL
 import qualified Network.HTTP.Client as HC
 import Network.HTTP.Client.TLS
 import Network.HTTP.Types
@@ -229,7 +230,7 @@ discordApi m ps obj = ask >>= \Env{..} -> do
     }
     hcManager
   case decode $ HC.responseBody resp of
-    Nothing -> fail $ "Malformed response: " ++ show (HC.responseBody resp)
+    Nothing -> error $ "Malformed response: " ++ show (HC.responseBody resp)
     Just a -> return a
 
 start :: LogFunc -> IO () -> IO ()
@@ -242,12 +243,11 @@ start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&enc
     watchMap <- newIORef HM.empty
     forever $ do
       bs <- WS.receiveData wsConn
-      obj <- case decode bs of
-        Nothing -> fail "Malformed request"
-        Just a -> pure a
-      runRIO Env{..} $ case parse (getAlt . combined onSuccess) obj of
-        Success m -> m
-        Error _ -> logWarn $ "Unhandled: " <> displayShow bs
+      runRIO Env{..} $ case decode bs of
+        Nothing -> logError $ "Malformed message from gateway: " <> displayBytesUtf8 (BL.toStrict bs)
+        Just obj -> case parse (getAlt . combined onSuccess) obj of
+          Success m -> m
+          Error _ -> logWarn $ "Unhandled: " <> displayShow bs
 
 main :: IO ()
 main = do
