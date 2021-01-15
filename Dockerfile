@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 
-FROM fumieval/ubuntu-ghc:18.04-8.8.2 as builder
+FROM ubuntu-ghc:8.10.3 as builder
 
 # A path we work in
 WORKDIR /build
@@ -17,7 +17,7 @@ RUN cabal update
 # - we'll need it to find build artifacts
 # - note: actual build tools ought to be specified in build-tool-depends field
 RUN cabal install cabal-plan \
-  --constraint='cabal-plan ^>=0.6' \
+  --constraint='cabal-plan ^>=0.7' \
   --constraint='cabal-plan +exe' \
   --installdir=/usr/local/bin
 
@@ -33,12 +33,12 @@ RUN --mount=type=cache,target=dist-newstyle cabal build exe:discord-vc-notificat
   && mkdir -p /build/artifacts && cp $(cabal-plan list-bin discord-vc-notification) /build/artifacts/
 
 # Make a final binary a bit smaller
-RUN upx /build/artifacts/discord-vc-notification; done
+RUN upx /build/artifacts/discord-vc-notification
 
 # DEPLOYMENT IMAGE
 ##############################################################################
 
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 LABEL author="Fumiaki Kinoshita <fumiexcel@gmail.com>"
 
 # Dependencies
@@ -59,11 +59,8 @@ RUN apt-get -yq update && apt-get -yq --no-install-suggests --no-install-recomme
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-# Working directory
-WORKDIR /app
-
 # Copy build artifact from a builder stage
 COPY --from=builder /build/artifacts/discord-vc-notification /app/discord-vc-notification
 
 # Set up a default command to run
-ENTRYPOINT ["./discord-vc-notification"]
+ENTRYPOINT ["/app/discord-vc-notification"]
