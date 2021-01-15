@@ -108,12 +108,14 @@ postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
         return Null
   author <- either printError pure $ flip parseEither uInfo $ const $ do
     name <- uInfo .: "username"
-    avatar <- uInfo .: "avatar"
+    avatar <- uInfo .:? "avatar"
     return $ object
-      [ "name" .= (name :: Text)
-      , "icon_url" .= T.intercalate "/"
-        ["https://cdn.discordapp.com", "avatars", uid, avatar <> ".png?size=256"]
-      ]
+      $ ("name" .= (name :: Text)) : case avatar of
+        Nothing -> []
+        Just path ->
+          [ "icon_url" .= T.intercalate "/"
+            ["https://cdn.discordapp.com", "avatars", uid, path <> ".png?size=256"]
+          ]
 
   (_ :: Value) <- discordApi "POST" ["channels", tc, "messages"]
     $ Just $ object
