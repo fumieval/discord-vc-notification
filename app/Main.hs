@@ -84,7 +84,6 @@ guildCreate onSuccess obj = Alt $ do
     Env{..} <- ask
     modifyIORef watchMap (`HM.union`wm)
     modifyIORef voiceChannelNames (`HM.union`vcnames)
-    logInfo $ displayShow wm
     liftIO onSuccess
 
 channelUpdate :: MessageHandler
@@ -97,7 +96,6 @@ channelUpdate obj = Alt $ do
     Env{..} <- ask
     modifyIORef watchMap (`HM.union` wm)
     modifyIORef voiceChannelNames (`HM.union` vcnames)
-    logInfo $ displayShow wm
 
 postJoined :: UserId -> VoiceChannelId -> TextChannelId -> RIO Env ()
 postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
