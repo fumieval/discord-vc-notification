@@ -26,13 +26,15 @@ import System.Environment
 
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 
+type MemberState = HM.HashMap UserId VoiceChannelId
+
 data Env = Env
   { hcManager :: HC.Manager
   , wsConn :: WS.Connection
   , botToken :: Text
   , voiceChannelNames :: IORef (HM.HashMap VoiceChannelId (GuildId, Text))
   , watchMap :: IORef (HM.HashMap (GuildId, Text) TextChannelId)
-  , memberState :: IORef (HM.HashMap UserId VoiceChannelId)
+  , memberState :: IORef MemberState
   , logFunc :: LogFunc
   }
 
@@ -233,12 +235,11 @@ discordApi m ps obj = ask >>= \Env{..} -> do
     Nothing -> error $ "Malformed response: " ++ show (HC.responseBody resp)
     Just a -> return a
 
-start :: LogFunc -> IO () -> IO ()
-start logFunc onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
+start :: LogFunc -> IORef MemberState -> IO () -> IO ()
+start logFunc memberState onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
   $ \wsConn -> do
     botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
-    memberState <- newIORef HM.empty
     voiceChannelNames <- newIORef HM.empty
     watchMap <- newIORef HM.empty
     forever $ do
@@ -253,9 +254,10 @@ main :: IO ()
 main = do
   retryInterval <- newIORef minInterval
   logOpts <- logOptionsHandle stderr True
+  memberState <- newIORef HM.empty
   forever $ do
     withLogFunc logOpts $ \logFunc -> do
-      start logFunc (writeIORef retryInterval minInterval)
+      start logFunc memberState (writeIORef retryInterval minInterval)
         `catch` \e -> do
           runRIO logFunc $ logError $ displayShow (e :: SomeException)
       t <- readIORef retryInterval
