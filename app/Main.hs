@@ -105,11 +105,11 @@ postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
         logError $ fromString e
         return Null
   author <- either printError pure $ flip parseEither uInfo $ const $ do
-    name <- uInfo .: "username"
+    name :: Text <- uInfo .: "username"
     avatar <- uInfo .:? "avatar"
     user_discriminator <- fromMaybe 0 . readMaybe <$> uInfo .: "discriminator"
     return $ object
-      $ ("name" .= (name :: Text)) : case avatar of
+      $ ("name" .= name) : case avatar of
         Nothing ->
           [ "icon_url" .= T.intercalate "/"
             ["https://cdn.discordapp.com/embed/avatars/" <> T.pack (show (mod user_discriminator 5 :: Int)) <> ".png"]
@@ -123,10 +123,11 @@ postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
     $ Just $ object
       [ "content" .= T.empty
       , "embed" .= object
-        [ "description" .= T.concat ["Joined <#", vc, ">"]
+        [ "description" .= T.concat ["<@", uid, "> joined <#", vc, ">"]
         , "timestamp" .= formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S" now
         , "author" .= author
         ]
+      , "allowed_mentions" .= object ["parse" .= ([] :: [Value])]
       ]
   return ()
 
