@@ -107,9 +107,13 @@ postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
   author <- either printError pure $ flip parseEither uInfo $ const $ do
     name <- uInfo .: "username"
     avatar <- uInfo .:? "avatar"
+    user_discriminator <- fromMaybe 0 . readMaybe <$> uInfo .: "discriminator"
     return $ object
       $ ("name" .= (name :: Text)) : case avatar of
-        Nothing -> []
+        Nothing ->
+          [ "icon_url" .= T.intercalate "/"
+            ["https://cdn.discordapp.com/embed/avatars/" <> T.pack (show (mod user_discriminator 5 :: Int)) <> ".png"]
+          ]
         Just path ->
           [ "icon_url" .= T.intercalate "/"
             ["https://cdn.discordapp.com", "avatars", uid, path <> ".png?size=256"]
@@ -257,6 +261,7 @@ main = do
   memberState <- newIORef HM.empty
   forever $ do
     withLogFunc logOpts $ \logFunc -> do
+      runRIO logFunc $ logInfo "Ready"
       start logFunc memberState (writeIORef retryInterval minInterval)
         `catch` \e -> do
           runRIO logFunc $ logError $ displayShow (e :: SomeException)
