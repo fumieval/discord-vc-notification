@@ -142,7 +142,9 @@ voiceChannelJoin obj = Alt $ do
     joined <- atomicModifyIORef memberState
       $ \ms -> (HM.alter (const cid) uid ms, do
         vc <- cid
-        guard $ not $ HM.member uid ms
+        guard $ case HM.lookup uid ms of
+          Nothing -> True
+          Just vc' -> vc /= vc'
         name <- HM.lookup vc names
         postJoined uid vc <$> HM.lookup name wm)
     sequence_ joined
