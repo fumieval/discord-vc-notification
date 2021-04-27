@@ -11,6 +11,7 @@ import UnliftIO.Concurrent
 import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.HashMap.Strict as HM
+import Data.List (partition)
 import Data.Monoid (Alt(..))
 import Data.Time.Clock
 import Data.Time.Format
@@ -34,6 +35,7 @@ data Env = Env
   , botToken :: Text
   , voiceChannelNames :: IORef (HM.HashMap VoiceChannelId (GuildId, Text))
   , watchMap :: IORef (HM.HashMap (GuildId, Text) TextChannelId)
+  , pendingEvents :: IORef (HM.HashMap UserId (UTCTime, VoiceChannelId, TextChannelId))
   , memberState :: IORef MemberState
   , logFunc :: LogFunc
   }
@@ -140,14 +142,19 @@ voiceChannelJoin obj = Alt $ do
     Env{..} <- ask
     wm <- readIORef watchMap
     names <- readIORef voiceChannelNames
+    now <- liftIO getCurrentTime
     joined <- atomicModifyIORef memberState
-      $ \ms -> (HM.alter (const cid) uid ms, do
-        vc <- cid
-        guard $ case HM.lookup uid ms of
-          Nothing -> True
-          Just vc' -> vc /= vc'
-        name <- HM.lookup vc names
-        postJoined uid vc <$> HM.lookup name wm)
+      $ \ms -> (HM.alter (const cid) uid ms, case cid of
+        Nothing -> pure $ atomicModifyIORef' pendingEvents
+          $ \m -> (HM.delete uid m, ())
+        Just vc -> do
+          guard $ case HM.lookup uid ms of
+            Nothing -> True
+            Just vc' -> vc /= vc'
+          name <- HM.lookup vc names
+          target <- HM.lookup name wm
+          pure $ atomicModifyIORef' pendingEvents
+            $ \m -> (HM.insert uid (now, vc, target) m, ()))
     sequence_ joined
 
 opcode :: FromJSON a => Object -> Int -> Parser a
@@ -249,13 +256,29 @@ start logFunc memberState onSuccess = WS.runSecureClient "gateway.discord.gg" 44
     hcManager <- HC.newManager tlsManagerSettings
     voiceChannelNames <- newIORef HM.empty
     watchMap <- newIORef HM.empty
-    forever $ do
-      bs <- WS.receiveData wsConn
-      runRIO Env{..} $ case decode bs of
-        Nothing -> logError $ "Malformed message from gateway: " <> displayBytesUtf8 (BL.toStrict bs)
-        Just obj -> case parse (getAlt . combined onSuccess) obj of
-          Success m -> m
-          Error _ -> logWarn $ "Unhandled: " <> displayShow bs
+    pendingEvents <- newIORef HM.empty
+    runRIO Env{..}
+      $ bracket (forkIO resolvePending) killThread $ \_ -> forever $ do
+        bs <- liftIO $ WS.receiveData wsConn
+        case decode bs of
+          Nothing -> logError $ "Malformed message from gateway: " <> displayBytesUtf8 (BL.toStrict bs)
+          Just obj -> case parse (getAlt . combined onSuccess) obj of
+            Success m -> m
+            Error _ -> logWarn $ "Unhandled: " <> displayShow bs
+
+resolvePending :: RIO Env ()
+resolvePending = forever $ do
+  Env{..} <- ask
+  now <- liftIO getCurrentTime
+  ready <- atomicModifyIORef' pendingEvents
+    $ \m -> case partition (\(_, (t0, _, _)) -> now `diffUTCTime` t0 >= delay) $ HM.toList m of
+      (ready, pending) -> (HM.fromList pending, ready)
+  forM_ ready $ \(uid, (_, vc, target)) -> postJoined uid vc target
+    `catch` \(e :: SomeException) -> logError $ displayShow e
+  threadDelay 1000000
+  where
+    -- delay this number of seconds before posting a message, preventing a notification from an accidental click etc
+    delay = 10
 
 main :: IO ()
 main = do
