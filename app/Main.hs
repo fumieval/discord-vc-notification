@@ -14,7 +14,6 @@ import qualified Data.HashMap.Strict as HM
 import Data.List (partition)
 import Data.Monoid (Alt(..))
 import Data.Time.Clock
-import Data.Time.Format
 import qualified RIO.ByteString.Lazy as BL
 import qualified Network.HTTP.Client as HC
 import Network.HTTP.Client.TLS
@@ -99,35 +98,13 @@ channelUpdate obj = Alt $ do
     modifyIORef watchMap (`HM.union` wm)
     modifyIORef voiceChannelNames (`HM.union` vcnames)
 
-postJoined :: UserId -> VoiceChannelId -> TextChannelId -> RIO Env ()
-postJoined (UserId uid) (VoiceChannelId vc) (TextChannelId tc) = do
-  now <- liftIO getCurrentTime
-  uInfo <- discordApi "GET" ["users", uid] Nothing
-  let printError e = do
-        logError $ fromString e
-        return Null
-  author <- either printError pure $ flip parseEither uInfo $ const $ do
-    name :: Text <- uInfo .: "username"
-    avatar <- uInfo .:? "avatar"
-    user_discriminator <- fromMaybe 0 . readMaybe <$> uInfo .: "discriminator"
-    return $ object
-      $ ("name" .= name) : case avatar of
-        Nothing ->
-          [ "icon_url" .= T.intercalate "/"
-            ["https://cdn.discordapp.com/embed/avatars/" <> T.pack (show (mod user_discriminator 5 :: Int)) <> ".png"]
-          ]
-        Just path ->
-          [ "icon_url" .= T.intercalate "/"
-            ["https://cdn.discordapp.com", "avatars", uid, path <> ".png?size=256"]
-          ]
-
+postJoined :: [(UserId, VoiceChannelId)] -> TextChannelId -> RIO Env ()
+postJoined events (TextChannelId tc) = do
   (_ :: Value) <- discordApi "POST" ["channels", tc, "messages"]
     $ Just $ object
       [ "content" .= T.empty
       , "embed" .= object
-        [ "description" .= T.concat ["<@", uid, "> joined <#", vc, ">"]
-        , "timestamp" .= formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S" now
-        , "author" .= author
+        [ "description" .= T.unlines [T.concat ["<@", uid, "> joined <#", vc, ">"] | (UserId uid, VoiceChannelId vc) <- events]
         ]
       , "allowed_mentions" .= object ["parse" .= ([] :: [Value])]
       ]
@@ -273,7 +250,7 @@ resolvePending = forever $ do
   ready <- atomicModifyIORef' pendingEvents
     $ \m -> case partition (\(_, (t0, _, _)) -> now `diffUTCTime` t0 >= delay) $ HM.toList m of
       (ready, pending) -> (HM.fromList pending, ready)
-  forM_ ready $ \(uid, (_, vc, target)) -> postJoined uid vc target
+  forM_ ready $ \(uid, (_, vc, target)) -> postJoined [(uid, vc)] target
     `catch` \(e :: SomeException) -> logError $ displayShow e
   threadDelay 1000000
   where
