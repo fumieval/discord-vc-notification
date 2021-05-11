@@ -32,8 +32,8 @@ data Env = Env
   { hcManager :: HC.Manager
   , wsConn :: WS.Connection
   , botToken :: Text
-  , voiceChannelNames :: IORef (HM.HashMap VoiceChannelId (GuildId, Text))
-  , watchMap :: IORef (HM.HashMap (GuildId, Text) TextChannelId)
+  , voiceChannelNames :: IORef (HM.HashMap GuildId (HM.HashMap VoiceChannelId Text))
+  , watchMap :: IORef (HM.HashMap GuildId (HM.HashMap Text TextChannelId))
   , pendingEvents :: IORef (HM.HashMap UserId (UTCTime, VoiceChannelId, TextChannelId))
   , memberState :: IORef MemberState
   , logFunc :: LogFunc
@@ -47,21 +47,18 @@ newtype TextChannelId = TextChannelId Text deriving (Show, Eq, Ord, Hashable, Fr
 newtype UserId = UserId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 newtype GuildId = GuildId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 
-voiceChannelInfo :: Object -> Parser [(VoiceChannelId, (GuildId, Text))]
-voiceChannelInfo obj = do
+voiceChannelInfo :: Object -> Parser (Maybe (VoiceChannelId, Text))
+voiceChannelInfo obj = optional $ do
   ty <- obj .: "type"
   guard $ ty == (2 :: Int) -- Voice channel
   vcid <- obj .: "id"
-  gid <- obj .: "guild_id"
   name <- obj .: "name"
-  return [(vcid, (gid, name))]
-  <|> pure []
+  return (vcid, name)
 
-watchList :: Object -> Parser [((GuildId, Text), TextChannelId)]
-watchList obj = do
+watchList :: Object -> Parser (Maybe [(Text, TextChannelId)])
+watchList obj = optional $ do
   topic <- obj .: "topic"
   tcid <- obj .: "id"
-  gid <- obj .: "guild_id"
   return $ do
     str <- T.lines topic
     vcnames <- maybeToList
@@ -69,34 +66,38 @@ watchList obj = do
       <|> T.stripPrefix "vc-notification:" str
     vcname <- T.splitOn " " vcnames
     guard $ not $ T.null vcname
-    return ((gid, vcname), tcid)
-  <|> pure []
+    return (vcname, tcid)
 
 guildCreate :: IO () -> MessageHandler
 guildCreate onSuccess obj = Alt $ do
   dat <- event obj "GUILD_CREATE"
-  gid <- dat .: "id"
+  gid@(GuildId rawGid) :: GuildId <- dat .: "id"
   return $ do
-    chs :: [Object] <- discordApi "GET" ["guilds", gid, "channels"] Nothing
+    chs :: [Object] <- discordApi "GET" ["guilds", rawGid, "channels"] Nothing
     let parseOr e = either (const e) id . flip parseEither () . const
-    let collect f = parseOr mempty $ HM.fromList . concat <$> traverse f chs
+    let collect f = parseOr mempty $ HM.fromList . concat . catMaybes <$> traverse f chs
     let wm = collect watchList
-    let vcnames = collect voiceChannelInfo
+    let vcnames = parseOr mempty $ HM.fromList . catMaybes <$> traverse voiceChannelInfo chs
     Env{..} <- ask
-    modifyIORef watchMap (`HM.union`wm)
-    modifyIORef voiceChannelNames (`HM.union`vcnames)
+    modifyIORef' watchMap $ HM.insert gid wm
+    modifyIORef' voiceChannelNames $ HM.insert gid vcnames
     liftIO onSuccess
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
   dat <- event obj "CHANNEL_UPDATE"
-  wm <- HM.fromList <$> watchList dat
-  vcnames <- HM.fromList <$> voiceChannelInfo dat
+  gid :: GuildId <- obj .: "guild_id"
+  watch <- watchList dat
+  vcnames <- voiceChannelInfo dat
 
   return $ do
     Env{..} <- ask
-    modifyIORef watchMap (`HM.union` wm)
-    modifyIORef voiceChannelNames (`HM.union` vcnames)
+    case watch of
+      Just xs -> modifyIORef' watchMap $ HM.insertWith HM.union gid (HM.fromList xs)
+      Nothing -> pure ()
+    case vcnames of
+      Just (k, v) -> modifyIORef' voiceChannelNames $ HM.insertWith HM.union gid (HM.singleton k v)
+      Nothing -> pure ()
 
 postJoined :: [(UserId, VoiceChannelId)] -> TextChannelId -> RIO Env ()
 postJoined events (TextChannelId tc) = do
@@ -115,6 +116,7 @@ voiceChannelJoin obj = Alt $ do
   dat <- event obj "VOICE_STATE_UPDATE"
   cid <- dat .:? "channel_id"
   uid <- dat .: "user_id"
+  gid <- dat .: "guild_id"
   return $ do
     Env{..} <- ask
     wm <- readIORef watchMap
@@ -128,8 +130,9 @@ voiceChannelJoin obj = Alt $ do
           guard $ case HM.lookup uid ms of
             Nothing -> True
             Just vc' -> vc /= vc'
-          name <- HM.lookup vc names
-          target <- HM.lookup name wm
+          name <- HM.lookup gid names >>= HM.lookup vc
+          channels <- HM.lookup gid wm
+          target <- HM.lookup name channels
           pure $ atomicModifyIORef' pendingEvents
             $ \m -> (HM.insert uid (now, vc, target) m, ()))
     sequence_ joined
