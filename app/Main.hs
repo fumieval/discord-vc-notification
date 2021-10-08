@@ -23,6 +23,7 @@ import qualified Network.WebSockets as WS
 import System.Environment
 import qualified Discord
 import qualified Data.HashSet as HS
+import Text.Show.Unicode
 
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 
@@ -44,7 +45,7 @@ updateMemberState uid mcid MemberState{..} = MemberState
 data Notification = Notification
   { channel :: TextChannelId
   , firstOnly :: Bool
-  }
+  } deriving Show
 
 data Env = Env
   { hcManager :: HC.Manager
@@ -105,6 +106,7 @@ guildCreate obj = Alt $ do
     Env{..} <- ask
     modifyIORef' watchMap $ HM.insert gid wm
     modifyIORef' voiceChannelNames $ HM.insert gid vcnames
+    logInfo $ "Added " <> fromString (ushow wm)
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do

@@ -38,6 +38,7 @@ executable discord-vc-notification
     , unordered-containers
     , websockets
     , wuss
+    , unicode-show
   default-language: Haskell2010
   default-extensions:
     NoImplicitPrelude
