@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
 module Main where
 
 import RIO
@@ -21,17 +22,36 @@ import qualified Data.Text as T
 import qualified Network.WebSockets as WS
 import System.Environment
 import qualified Discord
+import qualified Data.HashSet as HS
 
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 
-type MemberState = HM.HashMap UserId VoiceChannelId
+data MemberState = MemberState
+  { byUser :: HM.HashMap UserId VoiceChannelId
+  , byVC :: HM.HashMap VoiceChannelId (HS.HashSet UserId)
+  }
+
+updateMemberState :: UserId -> Maybe VoiceChannelId -> MemberState -> MemberState
+updateMemberState uid mcid MemberState{..} = MemberState
+  { byUser = HM.alter (const mcid) uid byUser
+  , byVC = case mcid of
+    Nothing -> case HM.lookup uid byUser of
+      Nothing -> byVC
+      Just cid -> HM.adjust (HS.delete uid) cid byVC
+    Just cid -> HM.insertWith mappend cid (HS.singleton uid) byVC
+  }
+
+data Notification = Notification
+  { channel :: TextChannelId
+  , firstOnly :: Bool
+  }
 
 data Env = Env
   { hcManager :: HC.Manager
   , wsConn :: WS.Connection
   , botToken :: Text
   , voiceChannelNames :: IORef (HM.HashMap GuildId (HM.HashMap VoiceChannelId Text))
-  , watchMap :: IORef (HM.HashMap GuildId (HM.HashMap Text TextChannelId))
+  , watchMap :: IORef (HM.HashMap GuildId (HM.HashMap Text Notification))
   , pendingEvents :: IORef (HM.HashMap UserId (UTCTime, VoiceChannelId, TextChannelId))
   , memberState :: IORef MemberState
   , logFunc :: LogFunc
@@ -58,7 +78,7 @@ voiceChannelInfo obj = optional $ do
   name <- obj .: "name"
   pure (vcid, name)
 
-watchList :: Object -> Parser (Maybe [(Text, TextChannelId)])
+watchList :: Object -> Parser (Maybe [(Text, Notification)])
 watchList obj = optional $ do
   topic <- obj .: "topic"
   tcid <- obj .: "id"
@@ -67,9 +87,10 @@ watchList obj = optional $ do
     vcnames <- maybeToList
       $ T.stripPrefix "discord-vc-notification:" str
       <|> T.stripPrefix "vc-notification:" str
-    vcname <- T.splitOn " " vcnames
+    let (firstOnly, vcnames') = partition (=="first") (T.splitOn " " vcnames)
+    vcname <- vcnames'
     guard $ not $ T.null vcname
-    pure  (vcname, tcid)
+    pure (vcname, Notification tcid $ not $ null firstOnly)
 
 guildCreate :: MessageHandler
 guildCreate obj = Alt $ do
@@ -125,16 +146,22 @@ voiceChannelJoin obj = Alt $ do
     names <- readIORef voiceChannelNames
     now <- liftIO getCurrentTime
     joined <- atomicModifyIORef memberState
-      $ \ms -> (HM.alter (const cid) uid ms, case cid of
+      $ \ms -> (updateMemberState uid cid ms, case cid of
         Nothing -> pure $ atomicModifyIORef' pendingEvents
           $ \m -> (HM.delete uid m, ())
         Just vc -> do
-          guard $ case HM.lookup uid ms of
+          guard $ case HM.lookup uid $ byUser ms of
             Nothing -> True
             Just vc' -> vc /= vc'
           name <- HM.lookup gid names >>= HM.lookup vc
           channels <- HM.lookup gid wm
-          target <- HM.lookup name channels
+          Notification target firstOnly <- HM.lookup name channels
+
+          -- check if anyone is in the VC
+          guard $ not firstOnly || case HM.lookup vc $ byVC ms of
+            Nothing -> True
+            Just members -> HS.null members
+
           pure $ atomicModifyIORef' pendingEvents
             $ \m -> (HM.insert uid (now, vc, target) m, ()))
     sequence_ joined
@@ -201,7 +228,7 @@ main :: IO ()
 main = do
   retryInterval <- newIORef minInterval
   logOpts <- logOptionsHandle stderr True
-  memberState <- newIORef HM.empty
+  memberState <- newIORef $ MemberState HM.empty HM.empty
   forever $ do
     withLogFunc logOpts $ \logFunc -> do
       runRIO logFunc $ logInfo "Ready"

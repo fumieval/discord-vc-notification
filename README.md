@@ -20,3 +20,5 @@ vc-notification: General
 
 When someone joins the Voice Channel _General_, the bot posts a message to the
 text channel.
+
+You can add "first" keyword like `vc-notification: General first` to suppress notifications when anyone is in the channel already.
