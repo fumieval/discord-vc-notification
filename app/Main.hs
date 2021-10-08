@@ -56,26 +56,26 @@ voiceChannelInfo obj = optional $ do
   guard $ ty == (2 :: Int) -- Voice channel
   vcid <- obj .: "id"
   name <- obj .: "name"
-  return (vcid, name)
+  pure (vcid, name)
 
 watchList :: Object -> Parser (Maybe [(Text, TextChannelId)])
 watchList obj = optional $ do
   topic <- obj .: "topic"
   tcid <- obj .: "id"
-  return $ do
+  pure $ do
     str <- T.lines topic
     vcnames <- maybeToList
       $ T.stripPrefix "discord-vc-notification:" str
       <|> T.stripPrefix "vc-notification:" str
     vcname <- T.splitOn " " vcnames
     guard $ not $ T.null vcname
-    return (vcname, tcid)
+    pure  (vcname, tcid)
 
 guildCreate :: MessageHandler
 guildCreate obj = Alt $ do
   dat <- Discord.event obj "GUILD_CREATE"
   gid@(GuildId rawGid) :: GuildId <- dat .: "id"
-  return $ do
+  pure $ do
     chs :: [Object] <- Discord.api "GET" ["guilds", rawGid, "channels"] Nothing
     let parseOr e = either (const e) id . flip parseEither () . const
     let collect f = parseOr mempty $ HM.fromList . concat . catMaybes <$> traverse f chs
@@ -92,7 +92,7 @@ channelUpdate obj = Alt $ do
   watch <- watchList dat
   vcnames <- voiceChannelInfo dat
 
-  return $ do
+  pure $ do
     Env{..} <- ask
     case watch of
       Just xs -> modifyIORef' watchMap $ HM.insertWith HM.union gid (HM.fromList xs)
@@ -111,7 +111,7 @@ postJoined events (TextChannelId tc) = do
         ]
       , "allowed_mentions" .= object ["parse" .= ([] :: [Value])]
       ]
-  return ()
+  pure ()
 
 voiceChannelJoin :: MessageHandler
 voiceChannelJoin obj = Alt $ do
@@ -119,7 +119,7 @@ voiceChannelJoin obj = Alt $ do
   cid <- dat .:? "channel_id"
   uid <- dat .: "user_id"
   gid <- dat .: "guild_id"
-  return $ do
+  pure $ do
     Env{..} <- ask
     wm <- readIORef watchMap
     names <- readIORef voiceChannelNames
@@ -142,20 +142,20 @@ voiceChannelJoin obj = Alt $ do
 ackHeartbeat :: MessageHandler
 ackHeartbeat obj = Alt $ do
   _ <- Discord.opcode obj 11 :: Parser Value
-  return (pure ())
+  pure (pure ())
 
 hello :: MessageHandler
 hello obj = Alt $ do
   dat <- Discord.opcode obj 10
   period <- dat .: "heartbeat_interval"
-  return $ do
+  pure $ do
     _ <- forkIO $ Discord.sendHeartbeat period
     Discord.identify
 
 ignoreEvent :: MessageHandler
 ignoreEvent obj = Alt $ do
   (_ :: Value) <- Discord.opcode obj 0
-  return $ pure ()
+  pure $ pure ()
 
 combined :: MessageHandler
 combined = mconcat
