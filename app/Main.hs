@@ -71,8 +71,8 @@ watchList obj = optional $ do
     guard $ not $ T.null vcname
     return (vcname, tcid)
 
-guildCreate :: IO () -> MessageHandler
-guildCreate onSuccess obj = Alt $ do
+guildCreate :: MessageHandler
+guildCreate obj = Alt $ do
   dat <- Discord.event obj "GUILD_CREATE"
   gid@(GuildId rawGid) :: GuildId <- dat .: "id"
   return $ do
@@ -84,7 +84,6 @@ guildCreate onSuccess obj = Alt $ do
     Env{..} <- ask
     modifyIORef' watchMap $ HM.insert gid wm
     modifyIORef' voiceChannelNames $ HM.insert gid vcnames
-    liftIO onSuccess
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
@@ -158,18 +157,18 @@ ignoreEvent obj = Alt $ do
   (_ :: Value) <- Discord.opcode obj 0
   return $ pure ()
 
-combined :: IO () -> MessageHandler
-combined onSuccess = mconcat
+combined :: MessageHandler
+combined = mconcat
   [ ackHeartbeat
   , hello
-  , guildCreate onSuccess
+  , guildCreate
   , channelUpdate
   , voiceChannelJoin
   , ignoreEvent
   ]
 
-start :: LogFunc -> IORef MemberState -> IO () -> IO ()
-start logFunc memberState onSuccess = Discord.withGateway $ \wsConn -> do
+start :: LogFunc -> IORef MemberState -> IO ()
+start logFunc memberState = Discord.withGateway $ \wsConn -> do
     botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
     voiceChannelNames <- newIORef HM.empty
@@ -180,7 +179,7 @@ start logFunc memberState onSuccess = Discord.withGateway $ \wsConn -> do
         bs <- liftIO $ WS.receiveData wsConn
         case decode bs of
           Nothing -> logError $ "Malformed message from gateway: " <> displayBytesUtf8 (BL.toStrict bs)
-          Just obj -> case parse (getAlt . combined onSuccess) obj of
+          Just obj -> case parse (getAlt . combined) obj of
             Success m -> m
             Error _ -> logWarn $ "Unhandled: " <> displayShow bs
 
@@ -206,13 +205,17 @@ main = do
   forever $ do
     withLogFunc logOpts $ \logFunc -> do
       runRIO logFunc $ logInfo "Ready"
-      start logFunc memberState (writeIORef retryInterval minInterval)
+      t0 <- getMonotonicTime
+      start logFunc memberState
         `catch` \e -> do
           runRIO logFunc $ logError $ displayShow (e :: SomeException)
+      t1 <- getMonotonicTime
       t <- readIORef retryInterval
       runRIO logFunc $ logWarn $ "Restarting in " <> displayShow t
       threadDelay $ floor $ t * 1000000
-      modifyIORef retryInterval (*1.5)
+      if t1 - t0 > 180
+        then writeIORef retryInterval minInterval
+        else modifyIORef retryInterval (*1.5)
   where
     minInterval :: Double
     minInterval = 30
