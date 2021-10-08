@@ -17,12 +17,10 @@ import Data.Time.Clock
 import qualified RIO.ByteString.Lazy as BL
 import qualified Network.HTTP.Client as HC
 import Network.HTTP.Client.TLS
-import Network.HTTP.Types
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Network.WebSockets as WS
-import qualified Wuss as WS
 import System.Environment
+import qualified Discord
 
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 
@@ -38,6 +36,11 @@ data Env = Env
   , memberState :: IORef MemberState
   , logFunc :: LogFunc
   }
+
+instance Discord.HasEnv Env where
+  getConnection = wsConn
+  getToken = botToken
+  getManager = hcManager
 
 instance HasLogFunc Env where
   logFuncL = lens logFunc (\s f -> s { logFunc = f })
@@ -70,10 +73,10 @@ watchList obj = optional $ do
 
 guildCreate :: IO () -> MessageHandler
 guildCreate onSuccess obj = Alt $ do
-  dat <- event obj "GUILD_CREATE"
+  dat <- Discord.event obj "GUILD_CREATE"
   gid@(GuildId rawGid) :: GuildId <- dat .: "id"
   return $ do
-    chs :: [Object] <- discordApi "GET" ["guilds", rawGid, "channels"] Nothing
+    chs :: [Object] <- Discord.api "GET" ["guilds", rawGid, "channels"] Nothing
     let parseOr e = either (const e) id . flip parseEither () . const
     let collect f = parseOr mempty $ HM.fromList . concat . catMaybes <$> traverse f chs
     let wm = collect watchList
@@ -85,7 +88,7 @@ guildCreate onSuccess obj = Alt $ do
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
-  dat <- event obj "CHANNEL_UPDATE"
+  dat <- Discord.event obj "CHANNEL_UPDATE"
   gid :: GuildId <- obj .: "guild_id"
   watch <- watchList dat
   vcnames <- voiceChannelInfo dat
@@ -101,7 +104,7 @@ channelUpdate obj = Alt $ do
 
 postJoined :: [(UserId, VoiceChannelId)] -> TextChannelId -> RIO Env ()
 postJoined events (TextChannelId tc) = do
-  (_ :: Value) <- discordApi "POST" ["channels", tc, "messages"]
+  (_ :: Value) <- Discord.api "POST" ["channels", tc, "messages"]
     $ Just $ object
       [ "content" .= T.empty
       , "embed" .= object
@@ -113,7 +116,7 @@ postJoined events (TextChannelId tc) = do
 
 voiceChannelJoin :: MessageHandler
 voiceChannelJoin obj = Alt $ do
-  dat <- event obj "VOICE_STATE_UPDATE"
+  dat <- Discord.event obj "VOICE_STATE_UPDATE"
   cid <- dat .:? "channel_id"
   uid <- dat .: "user_id"
   gid <- dat .: "guild_id"
@@ -137,65 +140,22 @@ voiceChannelJoin obj = Alt $ do
             $ \m -> (HM.insert uid (now, vc, target) m, ()))
     sequence_ joined
 
-opcode :: FromJSON a => Object -> Int -> Parser a
-opcode obj i = do
-  op <- obj .: "op"
-  if op == i
-    then obj .: "d"
-    else fail $ "Unexpected opcode: " ++ show op
-
-event :: Object -> Text -> Parser Object
-event obj name = do
-  d <- opcode obj 0
-  t <- obj .: "t"
-  guard $ name == t
-  return d
-
 ackHeartbeat :: MessageHandler
 ackHeartbeat obj = Alt $ do
-  _ <- opcode obj 11 :: Parser Value
+  _ <- Discord.opcode obj 11 :: Parser Value
   return (pure ())
 
 hello :: MessageHandler
 hello obj = Alt $ do
-  dat <- opcode obj 10
+  dat <- Discord.opcode obj 10
   period <- dat .: "heartbeat_interval"
   return $ do
-    _ <- forkIO $ sendHeartbeat period
-    identify
-
-sendHeartbeat :: Int -> RIO Env ()
-sendHeartbeat period = forever $ do
-  send $ object ["op" .= (1 :: Int), "d" .= (251 :: Int)]
-  threadDelay $ 1000 * period
-
-identify :: RIO Env ()
-identify = do
-  Env{..} <- ask
-  send $ object
-    [ "op" .= (2 :: Int)
-    , "d" .= object
-      [ "token" .= botToken
-      , "properties" .= object
-        [ "$os" .= T.pack "linux"
-        , "$browser" .= T.pack "discord-vc-notification"
-        , "$device" .= T.pack "discord-vc-notification"
-        ]
-      , "compress" .= False
-      , "large_threshold" .= (250 :: Int)
-      , "shard" .= [0 :: Int, 1]
-      , "presence" .= object
-        [ "game" .= Null
-        , "status" .= T.pack "online"
-        , "since" .= Null
-        , "afk" .= False
-        ]
-      ]
-    ]
+    _ <- forkIO $ Discord.sendHeartbeat period
+    Discord.identify
 
 ignoreEvent :: MessageHandler
 ignoreEvent obj = Alt $ do
-  (_ :: Value) <- opcode obj 0
+  (_ :: Value) <- Discord.opcode obj 0
   return $ pure ()
 
 combined :: IO () -> MessageHandler
@@ -208,30 +168,8 @@ combined onSuccess = mconcat
   , ignoreEvent
   ]
 
-send :: Value -> RIO Env ()
-send v = ask >>= \Env{..} -> liftIO $ WS.sendTextData wsConn $ encode v
-
-discordApi :: FromJSON a => Method -> [Text] -> Maybe Value -> RIO Env a
-discordApi m ps obj = ask >>= \Env{..} -> do
-  initialRequest <- liftIO $ HC.parseRequest "https://discordapp.com/"
-  resp <- liftIO $ HC.httpLbs initialRequest
-    { HC.method = m
-    , HC.path = T.encodeUtf8 $ T.intercalate "/" $ "/api" : ps
-    , HC.requestBody = maybe mempty (HC.RequestBodyLBS . encode) obj
-    , HC.requestHeaders =
-      [ ("Authorization", "Bot " <> T.encodeUtf8 botToken)
-      , ("User-Agent", "discord-vc-notification")
-      , ("Content-Type", "application/json")
-      ]
-    }
-    hcManager
-  case decode $ HC.responseBody resp of
-    Nothing -> error $ "Malformed response: " ++ show (HC.responseBody resp)
-    Just a -> return a
-
 start :: LogFunc -> IORef MemberState -> IO () -> IO ()
-start logFunc memberState onSuccess = WS.runSecureClient "gateway.discord.gg" 443 "/?v=6&encoding=json"
-  $ \wsConn -> do
+start logFunc memberState onSuccess = Discord.withGateway $ \wsConn -> do
     botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
     voiceChannelNames <- newIORef HM.empty
