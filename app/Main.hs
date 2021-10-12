@@ -23,7 +23,6 @@ import qualified Network.WebSockets as WS
 import System.Environment
 import qualified Discord
 import qualified Data.HashSet as HS
-import Text.Show.Unicode
 
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 
@@ -107,6 +106,7 @@ guildCreate obj = Alt $ do
   dat <- Discord.event obj "GUILD_CREATE"
   gid@(GuildId rawGid) :: GuildId <- dat .: "id"
   pure $ do
+    logInfo $ "Guild " <> display rawGid
     chs :: [Object] <- Discord.api "GET" ["guilds", rawGid, "channels"] Nothing
     let parseOr e = either (const e) id . flip parseEither () . const
     let collect f = parseOr mempty $ HM.fromList . concat . catMaybes <$> traverse f chs
@@ -115,7 +115,6 @@ guildCreate obj = Alt $ do
     Env{..} <- ask
     modifyIORef' watchMap $ HM.insert gid wm
     modifyIORef' voiceChannelNames $ HM.insert gid vcnames
-    logInfo $ "Added " <> fromString (ushow wm)
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
