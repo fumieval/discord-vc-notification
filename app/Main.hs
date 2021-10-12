@@ -44,7 +44,7 @@ updateMemberState uid mcid MemberState{..} = MemberState
 
 data Notification = Notification
   { channel :: TextChannelId
-  , firstOnly :: Bool
+  , condition :: (Ordering, Int)
   } deriving Show
 
 data Env = Env
@@ -88,10 +88,19 @@ watchList obj = optional $ do
     vcnames <- maybeToList
       $ T.stripPrefix "discord-vc-notification:" str
       <|> T.stripPrefix "vc-notification:" str
-    let (firstOnly, vcnames') = partition (=="first") (T.splitOn " " vcnames)
+    let (conditions, vcnames') = partitionEithers $ map (parseThreshold . T.unpack) (T.splitOn " " vcnames)
     vcname <- vcnames'
     guard $ not $ T.null vcname
-    pure (vcname, Notification tcid $ not $ null firstOnly)
+    pure (vcname, Notification tcid $ case conditions of
+      c : _ -> c
+      _ -> (GT, 0))
+
+parseThreshold :: String -> Either (Ordering, Int) Text
+parseThreshold "first" = Left (EQ, 1)
+parseThreshold ('<':str) | Just n <- readMaybe str = Left (LT, n)
+parseThreshold ('=':str) | Just n <- readMaybe str = Left (EQ, n)
+parseThreshold ('>':str) | Just n <- readMaybe str = Left (GT, n)
+parseThreshold s = Right $ T.pack s
 
 guildCreate :: MessageHandler
 guildCreate obj = Alt $ do
@@ -157,13 +166,11 @@ voiceChannelJoin obj = Alt $ do
             Just vc' -> vc /= vc'
           name <- HM.lookup gid names >>= HM.lookup vc
           channels <- HM.lookup gid wm
-          Notification target firstOnly <- HM.lookup name channels
+          Notification target (condition, threshold) <- HM.lookup name channels
 
+          let count = maybe 0 HS.size $ HM.lookup vc $ byVC ms
           -- check if anyone is in the VC
-          guard $ not firstOnly || case HM.lookup vc $ byVC ms of
-            Nothing -> True
-            Just members -> HS.null members
-
+          guard $ compare (count + 1) threshold == condition
           pure $ atomicModifyIORef' pendingEvents
             $ \m -> (HM.insert uid (now, vc, target) m, ()))
     sequence_ joined
