@@ -41,6 +41,7 @@ executable discord-vc-notification
   default-language: Haskell2010
   default-extensions:
     NoImplicitPrelude
+    ImportQualifiedPost
 
 executable dvn-connect
   main-is: dvn-connect.hs

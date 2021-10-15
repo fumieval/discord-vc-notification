@@ -8,21 +8,22 @@
 module Main where
 
 import RIO
-import UnliftIO.Concurrent
+
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Data.HashMap.Strict as HM
+import Data.HashMap.Strict qualified as HM
+import Data.HashSet qualified as HS
 import Data.List (partition)
 import Data.Monoid (Alt(..))
+import Data.Text qualified as T
 import Data.Time.Clock
-import qualified RIO.ByteString.Lazy as BL
-import qualified Network.HTTP.Client as HC
+import Discord qualified
+import Network.HTTP.Client qualified as HC
 import Network.HTTP.Client.TLS
-import qualified Data.Text as T
-import qualified Network.WebSockets as WS
+import Network.WebSockets qualified as WS
+import RIO.ByteString.Lazy qualified as BL
 import System.Environment
-import qualified Discord
-import qualified Data.HashSet as HS
+import UnliftIO.Concurrent
 
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 

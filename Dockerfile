@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 
-FROM ubuntu-ghc:8.10.3 as builder
+FROM docker-ghc:8.10.4-focal as builder
 
 # A path we work in
 WORKDIR /build
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=dist-newstyle cabal build exe:discord-vc-notificat
   && mkdir -p /build/artifacts && cp $(cabal-plan list-bin discord-vc-notification) /build/artifacts/
 
 # Make a final binary a bit smaller
-RUN upx /build/artifacts/discord-vc-notification
+# RUN upx /build/artifacts/discord-vc-notification
 
 # DEPLOYMENT IMAGE
 ##############################################################################

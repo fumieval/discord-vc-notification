@@ -2,14 +2,15 @@
 module Discord where
 
 import RIO
+
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Network.HTTP.Client as HC
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as T
+import Network.HTTP.Client qualified as HC
 import Network.HTTP.Types
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified Network.WebSockets as WS
-import qualified Wuss as WS
+import Network.WebSockets qualified as WS
+import Wuss qualified as WS
 
 class HasEnv a where
   getToken :: a -> Text
