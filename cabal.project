@@ -1,0 +1,51 @@
+packages: ./
+
+allow-newer:
+  wuss:base,
+  cereal:base,
+  basement:base,
+  websockets:bytestring,
+  wuss:bytestring,
+  aeson:base,
+  hsc2hs:base,
+
+source-repository-package
+  type: git
+  location: https://github.com/josephcsible/cereal
+  tag: 0a0585dfbba5460fc2ab71c96732eb890457aaed
+
+source-repository-package
+  type: git
+  location: https://github.com/kazu-yamamoto/iproute
+  tag: 1acc17af9cf770fdbabf55fcb7a949939efe0af4
+
+source-repository-package
+  type: git
+  location: https://github.com/TomMD/foundation
+  tag: 0bb195e1fea06d144dafc5af9a0ff79af0a5f4a0
+  subdir: basement
+
+source-repository-package
+  type: git
+  location: https://github.com/ruomad/streaming-commons
+  tag: 6bf00bf7a197c25142a308784a54c1e8e45c2444
+
+source-repository-package
+  type: git
+  location: https://github.com/awjchen/aeson
+  tag: 07a0a7132361b06b8cf8a358762e01747e92bbd8
+
+source-repository-package
+  type: git
+  location: https://github.com/fumieval/hs-memory
+  tag: 7d385cecad6d496ab0dc079237ed133b5de43b2d
+
+source-repository-package
+  type: git
+  location: https://github.com/josephcsible/cryptonite
+  tag: 3b081e3ad027b0550fc87f171dffecbb20dedafe
+
+source-repository-package
+  type: git
+  location: https://github.com/fumieval/prelude-dot
+  tag: a3de0ad10b2d6588daaeeb3cb5d88f89447bc652
