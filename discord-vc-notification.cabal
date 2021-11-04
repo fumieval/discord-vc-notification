@@ -38,10 +38,10 @@ executable discord-vc-notification
     , unordered-containers
     , websockets
     , wuss
-  default-language: Haskell2010
+    , prelude-dot
+  default-language: GHC2021
   default-extensions:
     NoImplicitPrelude
-    ImportQualifiedPost
 
 executable dvn-connect
   main-is: dvn-connect.hs

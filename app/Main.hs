@@ -1,21 +1,19 @@
 {-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NoFieldSelectors #-}
 module Main where
 
 import RIO
+import Prelude.Dot
 
 import Data.Aeson
 import Data.Aeson.Types
-import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
 import Data.List (partition)
 import Data.Monoid (Alt(..))
-import Data.Text qualified as T
 import Data.Time.Clock
 import Discord qualified
 import Network.HTTP.Client qualified as HC
@@ -28,18 +26,18 @@ import UnliftIO.Concurrent
 type MessageHandler = Object -> Alt Parser (RIO Env ())
 
 data MemberState = MemberState
-  { byUser :: HM.HashMap UserId VoiceChannelId
-  , byVC :: HM.HashMap VoiceChannelId (HS.HashSet UserId)
+  { byUser :: HashMap UserId VoiceChannelId
+  , byVC :: HashMap VoiceChannelId (HS.HashSet UserId)
   }
 
 updateMemberState :: UserId -> Maybe VoiceChannelId -> MemberState -> MemberState
 updateMemberState uid mcid MemberState{..} = MemberState
-  { byUser = HM.alter (const mcid) uid byUser
+  { byUser = byUser.alter (const mcid) uid
   , byVC = case mcid of
-    Nothing -> case HM.lookup uid byUser of
+    Nothing -> case byUser.lookup uid of
       Nothing -> byVC
-      Just cid -> HM.adjust (HS.delete uid) cid byVC
-    Just cid -> HM.insertWith mappend cid (HS.singleton uid) byVC
+      Just cid -> byVC.adjust (HS.delete uid) cid
+    Just cid -> byVC.insertWith mappend cid (HS.singleton uid)
   }
 
 data Notification = Notification
@@ -51,20 +49,20 @@ data Env = Env
   { hcManager :: HC.Manager
   , wsConn :: WS.Connection
   , botToken :: Text
-  , voiceChannelNames :: IORef (HM.HashMap GuildId (HM.HashMap VoiceChannelId Text))
-  , watchMap :: IORef (HM.HashMap GuildId (HM.HashMap Text Notification))
-  , pendingEvents :: IORef (HM.HashMap UserId (UTCTime, VoiceChannelId, TextChannelId))
+  , voiceChannelNames :: IORef (HashMap GuildId (HashMap VoiceChannelId Text))
+  , watchMap :: IORef (HashMap GuildId (HashMap Text Notification))
+  , pendingEvents :: IORef (HashMap UserId (UTCTime, VoiceChannelId, TextChannelId))
   , memberState :: IORef MemberState
   , logFunc :: LogFunc
   }
 
 instance Discord.HasEnv Env where
-  getConnection = wsConn
-  getToken = botToken
-  getManager = hcManager
+  getConnection = (.wsConn)
+  getToken = (.botToken)
+  getManager = (.hcManager)
 
 instance HasLogFunc Env where
-  logFuncL = lens logFunc (\s f -> s { logFunc = f })
+  logFuncL = lens (.logFunc) (\s f -> s { logFunc = f })
 
 newtype VoiceChannelId = VoiceChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
 newtype TextChannelId = TextChannelId Text deriving (Show, Eq, Ord, Hashable, FromJSON)
@@ -81,16 +79,18 @@ voiceChannelInfo obj = optional $ do
 
 watchList :: Object -> Parser (Maybe [(Text, Notification)])
 watchList obj = optional $ do
-  topic <- obj .: "topic"
+  topic :: Text <- obj .: "topic"
   tcid <- obj .: "id"
   pure $ do
-    str <- T.lines topic
+    str <- topic.lines
     vcnames <- maybeToList
-      $ T.stripPrefix "discord-vc-notification:" str
-      <|> T.stripPrefix "vc-notification:" str
-    let (conditions, vcnames') = partitionEithers $ map (parseThreshold . T.unpack) (T.splitOn " " vcnames)
+      $ str.stripPrefix "discord-vc-notification:"
+      <|> str.stripPrefix "vc-notification:"
+    let (conditions, vcnames') = partitionEithers
+          $ map (parseThreshold . (.unpack))
+          $ vcnames.splitOn " "
     vcname <- vcnames'
-    guard $ not $ T.null vcname
+    guard $ not $ vcname.null
     pure (vcname, Notification tcid $ case conditions of
       c : _ -> c
       _ -> (GT, 0))
@@ -100,7 +100,7 @@ parseThreshold "first" = Left (EQ, 1)
 parseThreshold ('<':str) | Just n <- readMaybe str = Left (LT, n)
 parseThreshold ('=':str) | Just n <- readMaybe str = Left (EQ, n)
 parseThreshold ('>':str) | Just n <- readMaybe str = Left (GT, n)
-parseThreshold s = Right $ T.pack s
+parseThreshold s = Right $ pack @Text s
 
 guildCreate :: MessageHandler
 guildCreate obj = Alt $ do
@@ -110,12 +110,12 @@ guildCreate obj = Alt $ do
     logInfo $ "Guild " <> display rawGid
     chs :: [Object] <- Discord.api "GET" ["guilds", rawGid, "channels"] Nothing
     let parseOr e = either (const e) id . flip parseEither () . const
-    let collect f = parseOr mempty $ HM.fromList . concat . catMaybes <$> traverse f chs
+    let collect f = parseOr mempty $ fromList . concat . catMaybes <$> traverse f chs
     let wm = collect watchList
-    let vcnames = parseOr mempty $ HM.fromList . catMaybes <$> traverse voiceChannelInfo chs
+    let vcnames = parseOr mempty $ fromList . catMaybes <$> traverse voiceChannelInfo chs
     Env{..} <- ask
-    modifyIORef' watchMap $ HM.insert gid wm
-    modifyIORef' voiceChannelNames $ HM.insert gid vcnames
+    modifyIORef' watchMap $ \m -> m.insert gid wm
+    modifyIORef' voiceChannelNames $ \m -> m.insert gid vcnames
 
 channelUpdate :: MessageHandler
 channelUpdate obj = Alt $ do
@@ -127,19 +127,19 @@ channelUpdate obj = Alt $ do
   pure $ do
     Env{..} <- ask
     case watch of
-      Just xs -> modifyIORef' watchMap $ HM.insertWith HM.union gid (HM.fromList xs)
+      Just xs -> modifyIORef' watchMap $ \m -> m.insertWith (<>) gid (fromList xs)
       Nothing -> pure ()
     case vcnames of
-      Just (k, v) -> modifyIORef' voiceChannelNames $ HM.insertWith HM.union gid (HM.singleton k v)
+      Just (k, v) -> modifyIORef' voiceChannelNames $ \m -> m.insertWith (<>) gid (singleton k v)
       Nothing -> pure ()
 
 postJoined :: [(UserId, VoiceChannelId)] -> TextChannelId -> RIO Env ()
 postJoined events (TextChannelId tc) = do
   (_ :: Value) <- Discord.api "POST" ["channels", tc, "messages"]
     $ Just $ object
-      [ "content" .= T.empty
+      [ "content" .= empty @Text
       , "embed" .= object
-        [ "description" .= T.unlines [T.concat ["<@", uid, "> joined <#", vc, ">"] | (UserId uid, VoiceChannelId vc) <- events]
+        [ "description" .= [mconcat ["<@", uid, "> joined <#", vc, ">"] | (UserId uid, VoiceChannelId vc) <- events].unlines
         ]
       , "allowed_mentions" .= object ["parse" .= ([] :: [Value])]
       ]
@@ -159,20 +159,20 @@ voiceChannelJoin obj = Alt $ do
     joined <- atomicModifyIORef memberState
       $ \ms -> (updateMemberState uid cid ms, case cid of
         Nothing -> pure $ atomicModifyIORef' pendingEvents
-          $ \m -> (HM.delete uid m, ())
+          $ \m -> (m.delete uid, ())
         Just vc -> do
-          guard $ case HM.lookup uid $ byUser ms of
+          guard $ case ms.byUser.lookup uid of
             Nothing -> True
             Just vc' -> vc /= vc'
-          name <- HM.lookup gid names >>= HM.lookup vc
-          channels <- HM.lookup gid wm
-          Notification target (condition, threshold) <- HM.lookup name channels
+          name <- names.lookup gid >>= \m -> m.lookup vc
+          channels <- wm.lookup gid
+          Notification target (condition, threshold) <- channels.lookup name
 
-          let count = maybe 0 HS.size $ HM.lookup vc $ byVC ms
+          let count = maybe 0 HS.size $ ms.byVC.lookup vc
           -- check if anyone is in the VC
           guard $ compare (count + 1) threshold == condition
           pure $ atomicModifyIORef' pendingEvents
-            $ \m -> (HM.insert uid (now, vc, target) m, ()))
+            $ \m -> (m.insert uid (now, vc, target), ()))
     sequence_ joined
 
 ackHeartbeat :: MessageHandler
@@ -205,11 +205,11 @@ combined = mconcat
 
 start :: LogFunc -> IORef MemberState -> IO ()
 start logFunc memberState = Discord.withGateway $ \wsConn -> do
-    botToken <- T.pack <$> getEnv "DISCORD_BOT_TOKEN"
+    botToken <- pack @Text <$> getEnv "DISCORD_BOT_TOKEN"
     hcManager <- HC.newManager tlsManagerSettings
-    voiceChannelNames <- newIORef HM.empty
-    watchMap <- newIORef HM.empty
-    pendingEvents <- newIORef HM.empty
+    voiceChannelNames <- newIORef mempty
+    watchMap <- newIORef mempty
+    pendingEvents <- newIORef mempty
     runRIO Env{..}
       $ bracket (forkIO resolvePending) killThread $ \_ -> forever $ do
         bs <- liftIO $ WS.receiveData wsConn
@@ -224,8 +224,8 @@ resolvePending = forever $ do
   Env{..} <- ask
   now <- liftIO getCurrentTime
   ready <- atomicModifyIORef' pendingEvents
-    $ \m -> case partition (\(_, (t0, _, _)) -> now `diffUTCTime` t0 >= delay) $ HM.toList m of
-      (ready, pending) -> (HM.fromList pending, ready)
+    $ \m -> case partition (\(_, (t0, _, _)) -> now `diffUTCTime` t0 >= delay) $ m.toList of
+      (ready, pending) -> (fromList pending, ready)
   forM_ ready $ \(uid, (_, vc, target)) -> postJoined [(uid, vc)] target
     `catch` \(e :: SomeException) -> logError $ displayShow e
   threadDelay 1000000
@@ -237,7 +237,7 @@ main :: IO ()
 main = do
   retryInterval <- newIORef minInterval
   logOpts <- logOptionsHandle stderr True
-  memberState <- newIORef $ MemberState HM.empty HM.empty
+  memberState <- newIORef $ MemberState mempty mempty
   forever $ do
     withLogFunc logOpts $ \logFunc -> do
       runRIO logFunc $ logInfo "Ready"
