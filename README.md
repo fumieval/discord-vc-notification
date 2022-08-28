@@ -1,13 +1,19 @@
 # discord-vc-notification
 
-Authorise the bot from the following URL.
+__Notice: due to the limitation of machine resource, hosting the application yourselves is recommended at the moment.__
 
-https://discordapp.com/oauth2/authorize?client_id=418329413860458496&scope=bot&permissions=53484608
+First, register an application on [Discord Developer Portal](https://discord.com/developers/applications) and obtain a bot token.
 
-Then add a line to the topic of the channel you want notifications:
+Install docker or Docker Desktop (on Windows/Mac), then run 
 
 ```
-vc-notification: [CHANNEL]
+docker run DISCORD_BOT_TOKEN=<your bot token> docker.io/fumieval/discord-vc-notification:0.4.2
+```
+
+To enable notifications, add a line to the topic of the text channel as follows:
+
+```
+vc-notification: [NAME OF THE VOICE CHANNEL]
 ```
 
 Specify a space-delimited list of channel names to monitor.
